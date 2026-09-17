@@ -1,6 +1,6 @@
 # Computer Use
 
-PI-Desktop 插件。让 AI 帮你看屏幕、点鼠标、按键盘。
+PI-Desktop 插件。复刻 Codex 的操控功能，让 AI 直接操控电脑完成简单作业。
 
 已测过：**Grok 4.6**、**GPT 5.6**、**Kimi K3**。
 
