@@ -1,0 +1,5 @@
+Thumbs.db
+.DS_Store
+*.log
+dist/*.piplug
+!dist/cn.star.computer-use-0.3.0.piplug
