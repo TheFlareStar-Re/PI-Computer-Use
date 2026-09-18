@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "cn.star.computer-use",
   "name": "Computer Use",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Windows Computer Use via cua-driver: background UI Automation, split observe, verified actions, allowlist panel and emergency stop.",
   "author": "TheFlareStar",
   "license": "MPL-2.0",
@@ -144,7 +144,12 @@
             "y": { "type": "number" },
             "click_count": { "type": "integer" },
             "mouse_button": { "type": "string", "enum": ["left", "right", "middle"] },
-            "observe": { "type": "boolean" }
+            "observe": { "type": "boolean" },
+            "delivery_mode": { "type": "string", "enum": ["background", "foreground"] },
+            "region_x": { "type": "number" },
+            "region_y": { "type": "number" },
+            "region_width": { "type": "number" },
+            "region_height": { "type": "number" }
           },
           "required": ["app"]
         }
@@ -178,7 +183,11 @@
             "element_index": { "type": "string" },
             "direction": { "type": "string" },
             "pages": { "type": "number" },
-            "observe": { "type": "boolean" }
+            "observe": { "type": "boolean" },
+            "region_x": { "type": "number" },
+            "region_y": { "type": "number" },
+            "region_width": { "type": "number" },
+            "region_height": { "type": "number" }
           },
           "required": ["app", "direction"]
         }
@@ -196,14 +205,18 @@
             "from_y": { "type": "number" },
             "to_x": { "type": "number" },
             "to_y": { "type": "number" },
-            "observe": { "type": "boolean" }
+            "observe": { "type": "boolean" },
+            "region_x": { "type": "number" },
+            "region_y": { "type": "number" },
+            "region_width": { "type": "number" },
+            "region_height": { "type": "number" }
           },
           "required": ["app", "from_x", "from_y", "to_x", "to_y"]
         }
       },
       {
         "name": "type_text",
-        "description": "Type literal text into the target app (background). XAML/UWP fields need a Document/edit index; the plugin picks one from the last snapshot if omitted.",
+        "description": "Type literal text into the target app (background). XAML/UWP fields need a Document/edit index; the plugin picks one from the last snapshot if omitted. Unverified results include a focus_state probe (GetGUIThreadInfo).",
         "risk": "high",
         "schema": {
           "type": "object",
@@ -212,14 +225,19 @@
             "window_id": { "type": "number" },
             "element_index": { "type": "string" },
             "text": { "type": "string" },
-            "observe": { "type": "boolean" }
+            "observe": { "type": "boolean" },
+            "delivery_mode": { "type": "string", "enum": ["background", "foreground"] },
+            "region_x": { "type": "number" },
+            "region_y": { "type": "number" },
+            "region_width": { "type": "number" },
+            "region_height": { "type": "number" }
           },
           "required": ["app", "text"]
         }
       },
       {
         "name": "press_key",
-        "description": "Press one host-OS chord. Windows navigation preserves focus via guarded native delivery. Escape handles editor/dropdown/menu evidence and reports cancellation separately from transport; partial absence proves nothing. Menu remains guarded. No replay; paste_text sets clipboard.",
+        "description": "Press one host-OS chord. Windows navigation preserves focus via guarded native delivery. Escape handles editor/dropdown/menu evidence (title-bar system menu excluded as window chrome) and reports cancellation separately from transport; partial absence proves nothing. Menu remains guarded. No replay; paste_text sets clipboard. delivery_mode=foreground answers the driver's background-unavailable escalation hint.",
         "risk": "high",
         "schema": {
           "type": "object",
@@ -228,7 +246,12 @@
             "window_id": { "type": "number" },
             "element_index": { "type": "string" },
             "key": { "type": "string" },
-            "observe": { "type": "boolean" }
+            "observe": { "type": "boolean" },
+            "delivery_mode": { "type": "string", "enum": ["background", "foreground"] },
+            "region_x": { "type": "number" },
+            "region_y": { "type": "number" },
+            "region_width": { "type": "number" },
+            "region_height": { "type": "number" }
           },
           "required": ["app", "key"]
         }
@@ -244,7 +267,11 @@
             "window_id": { "type": "number" },
             "element_index": { "type": "string", "description": "Legacy compatibility only; select the destination before pasting." },
             "text": { "type": "string" },
-            "observe": { "type": "boolean" }
+            "observe": { "type": "boolean" },
+            "region_x": { "type": "number" },
+            "region_y": { "type": "number" },
+            "region_width": { "type": "number" },
+            "region_height": { "type": "number" }
           },
           "required": ["app", "text"]
         }
@@ -260,7 +287,11 @@
             "window_id": { "type": "number" },
             "element_index": { "type": "string" },
             "value": { "type": "string" },
-            "observe": { "type": "boolean" }
+            "observe": { "type": "boolean" },
+            "region_x": { "type": "number" },
+            "region_y": { "type": "number" },
+            "region_width": { "type": "number" },
+            "region_height": { "type": "number" }
           },
           "required": ["app", "element_index", "value"]
         }

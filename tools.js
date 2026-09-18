@@ -63,6 +63,28 @@ const OBSERVE_PROP = {
   },
 };
 
+// region_* crop the post-action observe screenshot (or the get_app_state
+// capture). Cheap verification for AX-less windows: crop only the strip that
+// changes (for example a game chat box at the bottom-left) instead of reading
+// a full screenshot. Detail coordinates are not window coordinates.
+const REGION_PROPS = {
+  region_x: { type: "number", description: "Screenshot-relative crop X of the observe screenshot" },
+  region_y: { type: "number", description: "Screenshot-relative crop Y of the observe screenshot" },
+  region_width: { type: "number", description: "Screenshot-relative crop width" },
+  region_height: { type: "number", description: "Screenshot-relative crop height" },
+};
+
+// Matches the driver's own escalation hint ("retry with delivery_mode:
+// foreground"). Foreground brings the target to the front before the single
+// delivery attempt; it never authorizes a second attempt.
+const DELIVERY_PROP = {
+  delivery_mode: {
+    type: "string",
+    enum: ["background", "foreground"],
+    description: "Default background. foreground brings the window to the front before the one delivery attempt; use when the driver reports background delivery unavailable.",
+  },
+};
+
 const SECONDARY_ALIASES = {
   invoke: "click",
   toggle: "click",
@@ -183,10 +205,7 @@ const OCU_TOOLS = [
         poll_interval_ms: { type: "integer", minimum: 100, maximum: 5000, description: "Condition polling interval; default 500 ms. Intermediate polls omit screenshots." },
         max_tree_depth: { type: "integer", minimum: 1, description: "Max UIA depth. Default 20." },
         max_tree_nodes: { type: "integer", minimum: 1, description: "Max UIA nodes. Default 400." },
-        region_x: { type: "number", description: "Screenshot-relative crop X" },
-        region_y: { type: "number", description: "Screenshot-relative crop Y" },
-        region_width: { type: "number", description: "Screenshot-relative crop width" },
-        region_height: { type: "number", description: "Screenshot-relative crop height" },
+        ...REGION_PROPS,
       },
       required: ["app"],
     },
@@ -208,6 +227,8 @@ const OCU_TOOLS = [
         click_count: { type: "integer", description: "Click count. Default 1" },
         mouse_button: { type: "string", enum: ["left", "right", "middle"] },
         ...OBSERVE_PROP,
+        ...DELIVERY_PROP,
+        ...REGION_PROPS,
       },
       required: ["app"],
     },
@@ -244,6 +265,7 @@ const OCU_TOOLS = [
         direction: { type: "string", description: "up, down, left, or right" },
         pages: { type: "number", description: "Pages to scroll. Default 1" },
         ...OBSERVE_PROP,
+        ...REGION_PROPS,
       },
       required: ["app", "direction"],
     },
@@ -263,13 +285,14 @@ const OCU_TOOLS = [
         to_x: { type: "number" },
         to_y: { type: "number" },
         ...OBSERVE_PROP,
+        ...REGION_PROPS,
       },
       required: ["app", "from_x", "from_y", "to_x", "to_y"],
     },
   },
   {
     name: "type_text",
-    description: "Type literal text into the target app (background). XAML/UWP fields need a Document/edit index; the plugin picks one from the last snapshot if omitted.",
+    description: "Type literal text into the target app (background). XAML/UWP fields need a Document/edit index; the plugin picks one from the last snapshot if omitted. Unverified results include a focus_state probe (GetGUIThreadInfo).",
     risk: "high",
     needsApp: true,
     schema: {
@@ -280,13 +303,15 @@ const OCU_TOOLS = [
         element_index: stringParam("Optional element index from get_app_state"),
         text: stringParam("Literal text to type"),
         ...OBSERVE_PROP,
+        ...DELIVERY_PROP,
+        ...REGION_PROPS,
       },
       required: ["app", "text"],
     },
   },
   {
     name: "press_key",
-    description: "Press one host-OS key/chord. Windows unmodified navigation keys use one guarded native delivery without refocusing the editor or moving its caret first. Escape distinguishes editor/dropdown/menu evidence and reports cancellation state separately from accepted input. Partial trees never prove absence. Menu retains its editor guard. macOS uses Command, not Menu. No uncertain replay. Paste chords do not set clipboard — use paste_text.",
+    description: "Press one host-OS key/chord. Windows unmodified navigation keys use one guarded native delivery without refocusing the editor or moving its caret first. Escape distinguishes editor/dropdown/menu evidence (title-bar system menu is excluded as window chrome) and reports cancellation state separately from accepted input. Partial trees never prove absence. Menu retains its editor guard. macOS uses Command, not Menu. No uncertain replay. Paste chords do not set clipboard — use paste_text. delivery_mode=foreground answers the driver's background-unavailable escalation hint.",
     risk: "high",
     needsApp: true,
     schema: {
@@ -297,6 +322,8 @@ const OCU_TOOLS = [
         element_index: stringParam("Optional element index from get_app_state"),
         key: stringParam("Key or + separated chord"),
         ...OBSERVE_PROP,
+        ...DELIVERY_PROP,
+        ...REGION_PROPS,
       },
       required: ["app", "key"],
     },
@@ -314,6 +341,7 @@ const OCU_TOOLS = [
         element_index: stringParam("Legacy compatibility only; does not refocus the paste destination. Select the target control before pasting."),
         text: stringParam("Unicode text to place on the clipboard and paste"),
         ...OBSERVE_PROP,
+        ...REGION_PROPS,
       },
       required: ["app", "text"],
     },
@@ -331,6 +359,7 @@ const OCU_TOOLS = [
         element_index: stringParam("Element index from the latest get_app_state"),
         value: stringParam("Replacement value"),
         ...OBSERVE_PROP,
+        ...REGION_PROPS,
       },
       required: ["app", "element_index", "value"],
     },
@@ -347,7 +376,7 @@ function makeExecutors(runtime, loadSettings, dependencies = {}) {
       }
       const forwarded = tool.name === "get_app_state" ? applyTreeDefaults(coerceArgs(args)) : coerceArgs(args);
       const observe = SNAPSHOT_TOOLS.has(tool.name) || takeObserve(forwarded);
-      const region = tool.name === "get_app_state" ? takeRegion(forwarded) : null;
+      const region = takeRegion(forwarded);
       if (tool.needsApp) {
         const blocked = gateApp(forwarded.app, settings);
         if (blocked) return { ok: false, error: blocked };
@@ -373,7 +402,7 @@ function makeExecutors(runtime, loadSettings, dependencies = {}) {
       if (tool.name === "perform_secondary_action") {
         const routed = routeSecondaryAction(forwarded);
         const result = await runtime.callTool(routed.name, routed.args, { observe, settings });
-        return presentResult(result, { observe, action: tool.name, app: forwarded.app, screenshotExpected: observe });
+        return presentResult(result, { observe, region, action: tool.name, app: forwarded.app, screenshotExpected: observe });
       }
       let result = await runtime.callTool(tool.name, forwarded, { observe, settings });
       if (valueSelector !== undefined) result = await attachReadValue(runtime,

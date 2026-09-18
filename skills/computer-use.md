@@ -26,6 +26,8 @@ Prefer the PI-Desktop `Browser` tool for Chrome/Edge/web pages. Use these tools 
   - `press_key` — one chord per call. Pick chords for the **host OS** (table below). Never `type_text` the words Escape/Return/Tab. `Backspace` ≠ `Delete`.
   - `paste_text` — Unicode / TSV. Sets clipboard then paste. Do not `press_key` a paste chord (clipboard not set).
   - `scroll` / `drag` / `type_text` / `set_value` — background UIA.
+  - `click` / `press_key` / `type_text` accept `delivery_mode` (`background` default, `foreground`). Use `foreground` when a result or the driver reports background delivery unavailable ("escalate to delivery_mode"). It brings the window to the front before the one attempt; it is not a retry.
+  - Action tools accept `region_x/region_y/region_width/region_height`; with `observe=true` the post-action screenshot is cropped to that strip. Requires `observe=true` (otherwise reported as `observe_required`).
 - Action responses preserve `structuredContent.action_result` (delivery / UI change / goal / evidence). `verified` / `effect` from the driver describe its action check, not the entire business task. `observe=true` requests post-action state. `type_text` may choose a Document/Edit for XAML; `paste_text` instead preserves the current focused control and caret, so select the destination first. Its legacy `element_index` does not retarget paste.
 - `stop_computer_use` — kills the helper; user must start it again from the panel.
 
@@ -142,6 +144,17 @@ Feishu sheets are one instance of this class (also Edge, Electron grids, some ID
 - Do not click footer “条记录” / stats. Do not `shift+space` a record list unless the user asked to multi-select. Do not click `bitable-toolbar-gallery-to-page-btn` (AI page builder, not expand-record).
 - `hit=none` describes lack of an AX hit, not a failed click; `path=win32-hwnd` describes transport, not menu focus. An unchanged picture does not distinguish unsupported navigation from wrong focus. Read the transport diagnostics before concluding.
 - Screenshot-only observations still request new images. Do not diagnose a cache bug from an unchanged `snapshot_id`; use image versions/timestamps and actual pixels. Pure `Text` without an invoke action is not a proven actionable AX menu item. Menu End/Down support must be observed, not assumed.
+
+## Games and AX-less windows
+
+GLFW/LWJGL and most custom-rendered game windows expose no usable UIA tree: `tree_actionable=false` with only title-bar chrome (system menu, min/close buttons) is expected, not an error. `element_index` and `read_value` cannot work there; Escape's cancellation guard excludes the title-bar 系统/System menu item as window chrome, so it no longer counts as menu evidence.
+
+- Identify the window by title via `list_windows` (works when JVM tooling like jcmd cannot see the process).
+- Background `press_key` / `type_text` (PostMessage) usually reaches game windows without stealing foreground focus — useful for debugging.
+- Verify each blind step cheaply: pass `observe=true` plus `region_*` cropping only the strip that changes (a chat box is typically the bottom-left quarter), instead of reading full screenshots.
+- Blind keys can land as game input (a missed chat-open key may open an inventory). Never batch unknown-state keys; verify the state-changing key with a cropped observation before typing payload text.
+- Unverified `type_text` includes `structuredContent.focus_state` (GetGUIThreadInfo): `target_thread_focus=false` means the text went nowhere readable — re-target instead of retyping.
+- Freshness: `image_version`/`image_captured_at` and `tree_version`/`tree_captured_at` are independent. When a channel was not refreshed, the response flags `tree_stale` / `image_stale` and the text says `tree_state=stale(earlier capture...)`; never treat a new screenshot as proof of a new tree.
 
 ## Safety
 

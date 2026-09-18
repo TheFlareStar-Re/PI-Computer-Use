@@ -13,7 +13,7 @@ const editor = [{ role: "Edit", name: "BITABLE_TEXT_EDITOR_1", element_index: 2 
 const dropdown = [{ role: "Edit", name: "查找或创建选项", element_index: 3 }];
 const state = (elements, extra = {}) => ({ structuredContent: { elements, snapshot_id: "live", pid: 42, window_id: 100, ...extra } });
 
-function fixture({ platform = "win32", captures = [state(normal)], native, afterFront, afterCapture } = {}) {
+function fixture({ platform = "win32", captures = [state(normal)], native, afterFront, afterCapture, focusStateResult } = {}) {
   const calls = { native: [], cua: [], action: [], focus: 0 };
   let captureNo = 0;
   const sandbox = {
@@ -26,6 +26,12 @@ function fixture({ platform = "win32", captures = [state(normal)], native, after
           if (args.some((arg) => String(arg).endsWith("windows-uia-focus.ps1"))) {
             calls.focus++;
             return { status: 0, stdout: "" };
+          }
+          if (args.some((arg) => String(arg).endsWith("windows-focus-state.ps1"))) {
+            calls.focusState = (calls.focusState || 0) + 1;
+            if (focusStateResult !== undefined) return focusStateResult;
+            return { status: 0, stdout: JSON.stringify({ ok: true, target_hwnd: 100, foreground_hwnd: 100,
+              focus_hwnd: 100, caret_hwnd: 0, target_foreground: true, target_thread_focus: true, caret_visible: false }) };
           }
           calls.native.push({ exe, args });
           const response = typeof native === "function" ? native(calls.native.length, args) : native;
@@ -303,4 +309,115 @@ test("ui_change stays unknown when the post-action tree is incomplete or missing
   const f = fixture({ captures: [state(normal, { elements_complete: false })] });
   const result = await f.publicPress("Return", true);
   assert.equal(result.structuredContent.action_result.ui_change, "unknown");
+});
+
+test("title-bar system menu is window chrome, not cancellation evidence", async () => {
+  const chrome = [
+    { role: "TitleBar", name: "A Fragment of Peace", element_index: 1 },
+    { role: "MenuItem", name: "系统", element_index: 2 },
+    { role: "Button", name: "最小化", element_index: 3 },
+    { role: "Button", name: "关闭", element_index: 4 },
+  ];
+  const f = fixture({ captures: [state(chrome), state(chrome)] });
+  const result = await f.press("Escape");
+  assert.equal(f.calls.native.length, 1);
+  assert.equal(result.structuredContent.cancellation.before.kind, "none");
+  assert.equal(result.structuredContent.cancellation.after.kind, "none");
+  assert.equal(result.structuredContent.cancellation.reason, "no_positive_before_evidence");
+});
+
+test("resident title-bar system menu never downgrades Escape to resident_marker_persistent", async () => {
+  const chrome = [{ role: "MenuItem", name: "系统", element_index: 2 }];
+  const f = fixture({ captures: [state(chrome)] });
+  await f.runtime.callTool("get_app_state", { app: "sheet", include_screenshot: false }, {});
+  await f.runtime.callTool("get_app_state", { app: "sheet", include_screenshot: false }, {});
+  const result = await f.press("Escape", false);
+  assert.equal(f.calls.native.length, 1);
+  assert.equal(result.structuredContent.cancellation.after.kind, "none");
+  assert.notEqual(result.structuredContent.cancellation.reason, "resident_marker_persistent");
+});
+
+test("en-US System title-bar menu item is also excluded window chrome", async () => {
+  const chrome = [{ role: "MenuItem", name: "System", element_index: 2 }];
+  const f = fixture({ captures: [state(chrome), state(chrome)] });
+  const result = await f.press("Escape");
+  assert.equal(result.structuredContent.cancellation.before.kind, "none");
+});
+
+test("delivery_mode=foreground prepares foreground before the single key attempt", async () => {
+  const f = fixture();
+  const result = await f.runtime.callTool("press_key", { app: "sheet", key: "a", delivery_mode: "foreground" }, {});
+  assert.deepEqual(f.calls.cua.map((call) => call.name), ["bring_to_front", "press_key"]);
+  assert.equal(f.calls.cua.at(-1).payload.delivery_mode, "foreground");
+  assert.equal(result.structuredContent.delivery_mode, "foreground");
+  assert.equal(f.calls.native.length, 0);
+});
+
+test("delivery_mode omitted keeps default background key delivery", async () => {
+  const f = fixture();
+  await f.runtime.callTool("press_key", { app: "sheet", key: "a" }, {});
+  assert.equal(f.calls.cua.at(-1).payload.delivery_mode, "background");
+  assert.equal(f.calls.cua.filter((call) => call.name === "bring_to_front").length, 0);
+});
+
+test("unverified type_text attaches a GetGUIThreadInfo focus probe", async () => {
+  const f = fixture();
+  const result = await f.runtime.callTool("type_text", { app: "sheet", text: "/help" }, {});
+  assert.equal(f.calls.focusState, 1);
+  assert.equal(result.structuredContent.focus_state.target_thread_focus, true);
+  assert.match(result.content[0].text, /target_thread_focus=true/);
+});
+
+test("verified type_text skips the focus probe entirely", async () => {
+  const f = fixture();
+  f.runtime._cua = async (name, payload) => {
+    f.calls.cua.push({ name, payload });
+    return { structuredContent: { verified: true, effect: "confirmed" } };
+  };
+  const result = await f.runtime.callTool("type_text", { app: "sheet", text: "hi" }, {});
+  assert.equal(f.calls.focusState, undefined);
+  assert.equal(result.structuredContent.focus_state, undefined);
+});
+
+test("focus probe failure leaves the unverified type_text result untouched", async () => {
+  for (const focusStateResult of [{ status: 1, stdout: "" }, { status: 0, stdout: "not json" },
+    { status: 0, stdout: JSON.stringify({ ok: false, error: "no-thread" }) }]) {
+    const f = fixture({ focusStateResult });
+    const result = await f.runtime.callTool("type_text", { app: "sheet", text: "/help" }, {});
+    assert.equal(f.calls.focusState, 1);
+    assert.equal(result.structuredContent.focus_state, undefined);
+    assert.equal(result.structuredContent.effect, "unverifiable");
+  }
+});
+
+test("stale image annotation does not poison the cancellation guard", async () => {
+  const f = fixture({ captures: [state(editor), state(normal)] });
+  f.runtime.targets.get("sheet").image_captured_at = "2020-01-01T00:00:00.000Z";
+  const result = await f.publicPress("Escape", true);
+  assert.equal(result.structuredContent.cancellation.status, "closed");
+  assert.equal(result.structuredContent.cancellation.reason, "all_relevant_markers_absent_in_complete_tree");
+});
+
+test("caller-requested foreground click still delivers exactly once", async () => {
+  const f = fixture();
+  await f.runtime.callTool("click", { app: "sheet", x: 10, y: 10, delivery_mode: "foreground" }, {});
+  const clicks = f.calls.cua.filter((call) => call.name === "click");
+  assert.equal(clicks.length, 1);
+  assert.equal(clicks[0].payload.delivery_mode, "foreground");
+});
+
+test("delivery_mode=foreground on type_text prepares foreground before the single attempt", async () => {
+  const f = fixture();
+  await f.runtime.callTool("type_text", { app: "sheet", text: "hi", delivery_mode: "foreground" }, {});
+  assert.deepEqual(f.calls.cua.map((call) => call.name), ["bring_to_front", "type_text"]);
+  assert.equal(f.calls.cua.at(-1).payload.delivery_mode, "foreground");
+});
+
+test("系统菜单 chrome name variant is excluded while other menu items remain evidence", async () => {
+  const mixed = [{ role: "MenuItem", name: "系统菜单", element_index: 2 }, { role: "MenuItem", name: "复制", element_index: 3 }];
+  const f = fixture({ captures: [state(mixed, { elements_complete: false }), state(normal)] });
+  const result = await f.press("Escape");
+  assert.equal(result.structuredContent.cancellation.before.kind, "context_menu");
+  assert.equal(result.structuredContent.cancellation.before.markers.length, 1);
+  assert.equal(result.structuredContent.cancellation.before.markers[0].name, "复制");
 });

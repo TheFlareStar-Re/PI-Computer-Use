@@ -335,6 +335,15 @@ function observationFields(cached) {
 function observationText(cached) {
   return Object.entries(observationFields(cached)).map(([key, value]) => `${key}=${value}`).join(" ");
 }
+// True when a requested channel was not refreshed and its timestamp is
+// inherited from an earlier capture; surfaced so a fresh image never implies
+// a fresh tree (or vice versa).
+function stalenessFields(state) {
+  const out = {};
+  if (state && state.tree_stale === true) out.tree_stale = true;
+  if (state && state.image_stale === true) out.image_stale = true;
+  return out;
+}
 
 function trimTreeText(text) {
   let out = String(text || "");
@@ -604,7 +613,8 @@ function completeFreshTree(result, maxElements = 400, maxDepth = 20, allowEmpty 
 }
 
 function treeHasMenu(elements) {
-  return treeHasContextOverlay(elements) || elements.some((el) => el && /^menu(item(checkbox|radio)?)?$/i.test(String(el.role || "")));
+  return treeHasContextOverlay(elements) || elements.some((el) => el && !isWindowChromeMenu(el)
+    && /^menu(item(checkbox|radio)?)?$/i.test(String(el.role || "")));
 }
 
 function treeHasContextOverlay(elements) {
@@ -669,9 +679,20 @@ function markerText(el) {
   if (!el) return "";
   return [el.name, el.label, el.value, el.text].map((value) => String(value ?? "").trim()).find(Boolean) || "";
 }
+// The title-bar system menu item ("系统" / "System") is resident window chrome,
+// not a context menu or editing popup; it must never feed cancellation or
+// native-menu evidence (AX-less game windows expose only this chrome).
+const WINDOW_CHROME_MENU_NAME_RE = /^(系统|系统菜单|system)$/i;
+function isWindowChromeMenu(el) {
+  if (!el) return false;
+  const role = String(el.role || "").replace(/[ _-]/g, "").toLowerCase();
+  if (!/^menu(item(checkbox|radio)?)?$/.test(role)) return false;
+  return WINDOW_CHROME_MENU_NAME_RE.test(markerText(el));
+}
+
 
 function cancellationMarkerKind(el) {
-  if (!el) return null;
+  if (!el || isWindowChromeMenu(el)) return null;
   const role = String(el.role || "").replace(/[ _-]/g, "").toLowerCase();
   const blob = `${el.role || ""} ${el.label || ""} ${el.value || ""} ${el.name || ""}`;
   if (/BITABLE_TEXT_EDITOR|number-editor-input/i.test(blob)) return "cell_editor";
@@ -730,7 +751,10 @@ function responseFlaggedUnhealthy(result) {
     if (!value || typeof value !== "object") return false;
     if (nesting > 64) return true;
     return Object.entries(value).some(([key, item]) => {
-      if (key === "content" || key === "elements" || key === "tree_markdown") return false;
+      // tree_stale/image_stale are informational freshness annotations added by
+      // _getAppState, not capture health flags; they must not poison the guard.
+      if (key === "content" || key === "elements" || key === "tree_markdown"
+        || key === "tree_stale" || key === "image_stale") return false;
       const name = key.replace(/[_-]/g, "").toLowerCase();
       const flagged = item != null && item !== false && item !== 0 && item !== "" && item !== "false";
       if (/error|unavailable|degrad|stale/.test(name) && flagged) return true;
@@ -803,6 +827,14 @@ function annotateOverlayUnverified(result) {
 
 // Compatibility export: uncertain delivery must never authorize a second paste.
 function needsPasteFallback() { return false; }
+
+// Caller-selected delivery (schema delivery_mode): still a single attempt; the
+// foreground choice only prepares the target window before that attempt.
+function callerDeliveryOpts(args) {
+  return args && String(args.delivery_mode || "").toLowerCase() === "foreground"
+    ? { foreground: true, routeReason: "caller_requested_foreground" }
+    : {};
+}
 
 function actionSummary(result, action, app) {
   const structured = structuredOf(result);
@@ -930,6 +962,27 @@ function sendUiaFocus(env, hwnd) {
   }
 }
 
+
+// Read-only keyboard focus probe (GetGUIThreadInfo) for targets without a
+// ValuePattern. Reports where focus sits; never moves focus or sends input.
+function readFocusState(env, hwnd, pid) {
+  if (!IS_WIN || !hwnd) return null;
+  const script = path.join(__dirname, "scripts", "windows-focus-state.ps1");
+  if (!fs.existsSync(script)) return null;
+  try {
+    const result = spawnSync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script,
+        "-Hwnd", String(Number(hwnd)), "-TargetPid", String(Number(pid || 0))],
+      { env, encoding: "utf8", timeout: FOCUS_TIMEOUT_MS, windowsHide: true, maxBuffer: 64_000 },
+    );
+    if (result.error || result.status !== 0) return null;
+    const parsed = JSON.parse(String(result.stdout || "").trim());
+    return parsed && typeof parsed === "object" && parsed.ok === true ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 // Deliberately narrow: never discard modifiers to turn a hotkey into a menu key.
 function nativeKeyChord(parsed) {
@@ -1096,7 +1149,7 @@ class ComputerUseRuntime {
       const failed = captureFailed(observation);
       return { ...actionResult,
         content: [...(actionResult.content || []).filter((item) => item.type === "text"), ...(observation.content || [])],
-        structuredContent: { ...structuredOf(actionResult), ...observationFields(state),
+        structuredContent: { ...structuredOf(actionResult), ...observationFields(state), ...stalenessFields(state),
           observation: state, ...(failed ? { observation_error: "post_action_capture_failed" } : {}) },
       };
     } catch (error) {
@@ -1572,6 +1625,10 @@ class ComputerUseRuntime {
       _everActionable: prev._everActionable === true || Boolean(complete && (!includeScreenshot || image) && !structured.screenshot_error),
     };
     this._rememberTarget(args.app, remembered);
+    // A fresh screenshot with an inherited tree timestamp (or vice versa) is a
+    // common misread; flag each channel that was NOT refreshed this capture.
+    const treeStale = includeTree && !freshTree && remembered.tree_captured_at != null;
+    const imageStale = includeScreenshot && !image && remembered.image_captured_at != null;
     // Markers seen by standalone observations (no internal guard/wait context) are
     // candidates for "resident" app chrome; two distinct tree versions confirm it.
     if (!args._waitContext && includeTree && freshTree) {
@@ -1579,11 +1636,14 @@ class ComputerUseRuntime {
     }
     const elements = includeTree ? (query ? filterElements(structured.elements || [], query) : structured.elements || []) : [];
     structured = { ...structured, ...observationFields(remembered), _capture_target_match: captureTargetMatch,
+      ...(treeStale ? { tree_stale: true } : {}), ...(imageStale ? { image_stale: true } : {}),
       ...(query ? { query, query_local: false } : {}) };
     if (includeTree && freshTree) structured.elements = elements;
     if (!includeTree) { delete structured.elements; delete structured.tree_markdown; }
     const size = image ? imageSize(image) : { width: 0, height: 0 };
     const meta = [`app=${target.app} snapshot_id=${remembered.snapshot_id || ""}`, observationText(remembered),
+      treeStale ? "tree_state=stale(earlier capture, not refreshed)" : null,
+      imageStale ? "image_state=stale(earlier capture, not refreshed)" : null,
       structured.degraded ? `degraded=${structured.degraded_reason || true}` : null,
       includeScreenshot ? `screenshot_width=${structured.screenshot_width || size.width} screenshot_height=${structured.screenshot_height || size.height}` : "screenshot omitted",
       includeTree ? `elements=${elements.length}` : "tree omitted", query ? `query=${query}` : null].filter(Boolean).join(" ");
@@ -1629,10 +1689,12 @@ class ComputerUseRuntime {
     if (args.click_count) payload.count = Number(args.click_count);
     if (args.mouse_button) payload.button = args.mouse_button;
     const overlay = clickTargetsOverlay(hit, cached.elements, args.mouse_button);
+    const requested = callerDeliveryOpts(args);
     const result = await this._cuaAction("click", payload, observe, {
       overlay,
-      foreground: rightClick,
-      routeReason: rightClick ? "right_click_foreground" : overlay ? "existing_overlay" : "default_delivery",
+      foreground: rightClick || requested.foreground === true,
+      routeReason: rightClick ? "right_click_foreground" : overlay ? "existing_overlay"
+        : requested.routeReason || "default_delivery",
     });
     return annotateHit(result, hit, via);
   }
@@ -1666,7 +1728,19 @@ class ComputerUseRuntime {
     const target = await this._resolveTarget(args.app, args.window_id);
     const extra = await this._ensureEditableFields(args.app, target.window_id, args.element_index, false);
     const payload = { pid: target.pid, window_id: target.window_id, text: String(args.text ?? ""), ...extra };
-    return this._cuaAction("type_text", payload, observe);
+    let result = await this._cuaAction("type_text", payload, observe, callerDeliveryOpts(args));
+    // AX-less targets (games, custom-drawn canvases) have no ValuePattern read-back;
+    // a cheap GetGUIThreadInfo probe at least reports where keyboard focus sits.
+    if (IS_WIN && isUnverifiedAction(result)) {
+      const focus = readFocusState(this._childEnv(), target.window_id, target.pid);
+      if (focus) {
+        const note = `focus_state: target_window_foreground=${focus.target_foreground} target_thread_focus=${focus.target_thread_focus}`;
+        const content = (result.content || []).map((item) => item && item.type === "text"
+          ? { ...item, text: `${item.text} ${note}.` } : item);
+        result = { ...result, content, structuredContent: { ...structuredOf(result), focus_state: focus } };
+      }
+    }
+    return result;
   }
 
   _elementIsEditable(app, elementIndex) {
@@ -1795,7 +1869,7 @@ class ComputerUseRuntime {
     result = { ...result, content, structuredContent: {
       ...structuredOf(result), cancellation,
       ...(before.markers.some((marker, i) => marker.kind === "cell_editor" && !this._markerResidency(args.app, before.markers)[i]) ? { cell_editing: true } : {}),
-      ...(observe && state ? { ...observationFields(state), observation: state } : {}),
+      ...(observe && state ? { ...observationFields(state), ...stalenessFields(state), observation: state } : {}),
     } };
     return result;
   }
@@ -1938,7 +2012,7 @@ class ComputerUseRuntime {
     const payload = parsed.kind === "hotkey"
       ? { pid: target.pid, window_id: target.window_id, keys: parsed.keys, ...extra }
       : { pid: target.pid, window_id: target.window_id, key: parsed.key, ...extra };
-    return this._cuaAction(cuaName, payload, observe);
+    return this._cuaAction(cuaName, payload, observe, callerDeliveryOpts(args));
   }
 
   async _setValue(args, observe) {
@@ -2284,7 +2358,11 @@ function presentResult(result, opts = {}) {
   const publicMetadata = publicDiagnostics(metadata);
 
   if (!observe) {
-    const text = rawText.trim() || (result.isError ? "tool error" : `ok action=${action} app=${app}`);
+    let text = rawText.trim() || (result.isError ? "tool error" : `ok action=${action} app=${app}`);
+    if (opts.region) {
+      diagnostics.region_crop = { code: "observe_required", backend: "none" };
+      text = `${text}\n[region_* ignored: cropping applies to the post-action screenshot and requires observe=true]`;
+    }
     return { ...publicMetadata, ok: !result.isError, ...(result.isError ? { isError: true, error: text } : {}), text,
       content: [{ type: "text", text }], structuredContent: diagnostics };
   }

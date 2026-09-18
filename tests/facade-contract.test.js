@@ -79,3 +79,33 @@ test("public partial crop request returns invalid_region instead of disappearing
   assert.equal(result.structuredContent.region_crop.code, "invalid_region");
   assert.equal(f.calls[0][1].region_x, undefined);
 });
+
+test("action tool schemas match manifest for every registered tool", () => {
+  for (const name of ["click", "perform_secondary_action", "scroll", "drag", "type_text", "press_key", "paste_text", "set_value"]) {
+    const runtime = OCU_TOOLS.find(x => x.name === name).schema;
+    const declared = manifest.contributes.agentTools.find(x => x.name === name).schema;
+    assert.deepEqual(shape(runtime), shape(declared), name);
+  }
+});
+
+test("delivery_mode forwards through the press_key facade", async () => {
+  const f = fixture({ content: [{ type: "text", text: "ok" }], structuredContent: {} });
+  await f.executors.press_key({ app: "Notepad", key: "t", delivery_mode: "foreground" });
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0][0], "press_key");
+  assert.equal(f.calls[0][1].delivery_mode, "foreground");
+});
+
+test("action observe with a partial region reports invalid_region instead of disappearing", async () => {
+  const f = fixture({ content: [{ type: "text", text: "ok" }] });
+  const result = await f.executors.press_key({ app: "Notepad", key: "t", observe: true, region_x: 10 });
+  assert.equal(result.structuredContent.region_crop.code, "invalid_region");
+  assert.equal(f.calls[0][1].region_x, undefined);
+});
+
+test("region args on a non-observe action are stripped and reported as observe_required", async () => {
+  const f = fixture({ content: [{ type: "text", text: "ok" }], structuredContent: {} });
+  const result = await f.executors.type_text({ app: "Notepad", text: "hi", region_x: 0, region_y: 0, region_width: 10, region_height: 10 });
+  assert.equal(f.calls[0][1].region_x, undefined);
+  assert.equal(result.structuredContent.region_crop.code, "observe_required");
+});
