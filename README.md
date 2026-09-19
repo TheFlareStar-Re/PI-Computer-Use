@@ -6,7 +6,7 @@ PI-Desktop 插件。复刻 Codex 的操控功能，让 AI 直接操控电脑完�
 
 ## 安装
 
-导入 `dist` 里 **0.3.1** 的 `.piplug`，然后彻底退出 PI（含托盘）再开。
+导入 `dist` 里 **0.4.0** 的 `.piplug`，然后彻底退出 PI（含托盘）再开。
 
 第一次打开 **Computer Use: Open Panel**，确认本机已装 cua-driver、状态是 `running`。没有驱动时，面板里确认一下就会装：
 

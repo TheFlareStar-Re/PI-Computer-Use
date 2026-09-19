@@ -4,6 +4,7 @@ const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { resolvePowerShell } = require("./powershell");
 
 const INSTALL_SCRIPT_URL = "https://cua.ai/driver/install.ps1";
 const PROBE_TIMEOUT_MS = 15_000;
@@ -102,18 +103,28 @@ function probe() {
   };
 }
 
-function installPreview() {
+function displayExecutable(exe) {
+  return `& '${String(exe).replace(/'/g, "''")}'`;
+}
+
+function installPreview(options = {}) {
   const inner = `irm ${INSTALL_SCRIPT_URL} | iex`;
+  const env = options.env || process.env;
+  const program = resolvePowerShell({
+    env,
+    powershellPath: options.powershellPath || env.powershellPath,
+    powershellExe: options.powershellExe || env.powershellExe,
+  });
   return {
-    program: "powershell.exe",
+    program,
     args: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", inner],
-    display: `powershell -NoProfile -Command "${inner}"`,
+    display: `${displayExecutable(program)} -NoProfile -Command "${inner}"`,
     sourceUrl: INSTALL_SCRIPT_URL,
   };
 }
 
-function runInstall() {
-  const preview = installPreview();
+function runInstall(options = {}) {
+  const preview = installPreview(options);
   return new Promise((resolve, reject) => {
     const child = spawn(preview.program, preview.args, {
       windowsHide: true,

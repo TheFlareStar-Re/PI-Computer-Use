@@ -2,4 +2,4 @@ Thumbs.db
 .DS_Store
 *.log
 dist/*.piplug
-!dist/cn.star.computer-use-0.3.1.piplug
+!dist/cn.star.computer-use-0.4.0.piplug

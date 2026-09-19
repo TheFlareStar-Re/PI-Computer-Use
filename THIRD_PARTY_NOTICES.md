@@ -28,3 +28,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## GenOffice
+
+The Office knowledge and desktop workflow skills draw on the public **GenOffice** documentation. GenOffice binaries and engine source are not included in this plugin.
+
+- Source: https://github.com/genspark-ai/genoffice
+- Reference release: v0.10.639.
+- License: Apache-2.0 for the community repository; `ee/` has a separate enterprise license and is not used.
+- Upstream skill: https://github.com/genspark-ai/genoffice/blob/v0.10.639/skills/genoffice/SKILL.md
+- License and notices: https://github.com/genspark-ai/genoffice/blob/v0.10.639/LICENSE and https://github.com/genspark-ai/genoffice/blob/v0.10.639/NOTICE
+
+The plugin's Office skills are newly written workflow summaries inspired by the upstream skill and README, with Windows computer-use instructions added. They do not bundle the upstream skill verbatim or copy its document engine. GenOffice and Genspark names belong to their respective owners; this plugin is not affiliated with or endorsed by them.

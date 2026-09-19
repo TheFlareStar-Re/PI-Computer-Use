@@ -2,19 +2,19 @@
   "schemaVersion": 1,
   "id": "cn.star.computer-use",
   "name": "Computer Use",
-  "version": "0.3.1",
-  "description": "Windows Computer Use via cua-driver: background UI Automation, split observe, verified actions, allowlist panel and emergency stop.",
+  "version": "0.4.0",
+  "description": "Windows desktop automation with Office knowledge and application workflows.",
   "author": "TheFlareStar",
   "license": "MPL-2.0",
   "i18n": {
     "en": {
       "name": "Computer Use",
-      "description": "Windows Computer Use via cua-driver: background UI Automation, split observe, verified actions, allowlist panel and emergency stop.",
+      "description": "Windows desktop automation with Office knowledge and application workflows.",
       "safetyNotes": "Spawns the machine's cua-driver MCP server, which can screenshot windows and send mouse/keyboard input through UI Automation. High-risk tools. Built-in denylist blocks password managers, terminals, lock screen, Windows Security, PI-Desktop, ChatGPT, and Codex. An optional allowlist further restricts targets. Screenshots stay in the plugin process and are returned to the agent; they are not uploaded by this plugin. Installing the driver runs the official script from cua.ai after panel confirmation."
     },
     "zh-CN": {
       "name": "Computer Use",
-      "description": "用本机 cua-driver 做 Windows 桌面控制：默认后台 UIA、观察可拆、动作带验证，带允许列表和急停。",
+      "description": "Windows 桌面控制，内置 Office 知识和应用操作技能。",
       "safetyNotes": "插件进程会拉起本机 cua-driver MCP，可截取窗口并通过 UI Automation 发送键鼠。动作为高风险。内置拒绝密码管理器、终端、锁屏、Windows 安全中心、PI-Desktop、ChatGPT、Codex。可选允许列表进一步限制目标。截图只留在插件进程并回给 Agent，本插件不上传。安装驱动会在面板确认后运行 cua.ai 官方脚本。"
     }
   },
@@ -156,7 +156,7 @@
       },
       {
         "name": "perform_secondary_action",
-        "description": "Invoke a named accessibility action on an element from the latest get_app_state.",
+        "description": "Run supported accessibility actions: Invoke, SetValue, or directional Scroll. Select, Toggle, Expand, Collapse, ScrollIntoView, SetFocus and unknown actions are rejected without input; they are never replaced with Invoke.",
         "risk": "high",
         "schema": {
           "type": "object",
@@ -307,7 +307,9 @@
       }
     ],
     "skills": [
-      "skills/computer-use.md"
+      "skills/computer-use.md",
+      "skills/office-workflows.md",
+      "skills/office-desktop.md"
     ],
     "settings": [
       {
