@@ -82,9 +82,11 @@ test("explicit Explorer element target remains exact without automatic refocus",
   await f.runtime._pressKey({ app: "explorer", key: "Delete", element_index: 2 }, false);
   assert.equal(f.calls.focus, 0);
   assert.equal(f.calls.driver.length, 1);
-  assert.equal(f.calls.driver[0].payload.element_index, 2);
+  // cua-driver action tools accept `element_token` only; `element_index` and
+  // `snapshot_id` are unknown arguments and are rejected by the driver.
+  assert.equal(f.calls.driver[0].payload.element_index, undefined);
   assert.equal(f.calls.driver[0].payload.element_token, "snap:2");
-  assert.equal(f.calls.driver[0].payload.snapshot_id, "snap");
+  assert.equal(f.calls.driver[0].payload.snapshot_id, undefined);
 });
 
 test("observe=true performs one Delete and observation never replays it", async () => {

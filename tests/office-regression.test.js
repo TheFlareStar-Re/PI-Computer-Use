@@ -71,7 +71,10 @@ for (const [app, name, element, args] of [
     const deliveries = f.calls.cua.filter(call => call.name === name);
     assert.equal(result.structuredContent.action_result.delivery, "sent");
     assert.equal(deliveries.length, 1);
-    assert.equal(deliveries[0].payload.snapshot_id, "s000001");
+    // cua-driver action tools accept `element_token` only; `element_index` and
+    // `snapshot_id` are unknown arguments and are rejected by the driver.
+    assert.equal(deliveries[0].payload.snapshot_id, undefined);
+    assert.equal(deliveries[0].payload.element_index, undefined);
     assert.equal(deliveries[0].payload.element_token, "s000001:7");
     assert.equal(f.cached().snapshot_actionable, false);
     assert.equal((await f.call(name, { element_index: 7, ...args })).structuredContent.code, "stale_tree");

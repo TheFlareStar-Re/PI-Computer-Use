@@ -73,8 +73,11 @@ test("AX right-click uses foreground target once without overlay annotation", as
   const result = await f.runtime._click({ app: "notepad", element_index: 4, mouse_button: "right" }, true);
   assert.equal(f.clicks().length, 1);
   assert.equal(f.clicks()[0].payload.delivery_mode, "foreground");
-  assert.equal(f.clicks()[0].payload.element_index, 4);
+  // cua-driver action tools accept `element_token` only; `element_index` and
+  // `snapshot_id` are unknown arguments and are rejected by the driver.
+  assert.equal(f.clicks()[0].payload.element_index, undefined);
   assert.equal(f.clicks()[0].payload.element_token, "snap:4");
+  assert.equal(f.clicks()[0].payload.snapshot_id, undefined);
   assert.equal(result.structuredContent.overlay_unverified, undefined);
 });
 
@@ -99,7 +102,9 @@ test("plain left pixel click keeps background AX upgrade behavior", async () => 
   assert.equal(f.fronts().length, 0);
   assert.equal(f.clicks().length, 1);
   assert.equal(f.clicks()[0].payload.delivery_mode, "background");
-  assert.equal(f.clicks()[0].payload.element_index, 4);
+  assert.equal(f.clicks()[0].payload.element_index, undefined);
+  assert.equal(f.clicks()[0].payload.element_token, "snap:4");
+  assert.equal(f.clicks()[0].payload.snapshot_id, undefined);
   assert.equal(f.clicks()[0].payload.x, undefined);
   assert.equal(result.structuredContent.route_reason, "default_delivery");
 });

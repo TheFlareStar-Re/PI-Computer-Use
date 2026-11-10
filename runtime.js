@@ -1337,7 +1337,13 @@ class ComputerUseRuntime {
     if (actionEpoch !== (this._sessionEpoch || 0)) return runtimeError("session_changed", "Control session changed before delivery; no action sent", "not_sent");
     let result;
     try {
-      result = await this._cua(name, { ...args, delivery_mode: deliveryMode });
+      // cua-driver's action tools accept `element_token` only; they reject
+      // `element_index` and `snapshot_id` as unknown arguments, which
+      // refuses the whole call with `invalid_arguments` before anything is
+      // dispatched. `_elementFields` produces all three, so drop the two the
+      // driver does not know here, where every action passes through.
+      const { element_index, snapshot_id, ...driverArgs } = args;
+      result = await this._cua(name, { ...driverArgs, delivery_mode: deliveryMode });
     } catch (error) {
       result = runtimeError("action_delivery_unknown", error.message);
     } finally {
@@ -1806,7 +1812,14 @@ class ComputerUseRuntime {
     revision = this._observationRevision || 0;
     const payload = { pid: target.pid, window_id: target.window_id, include_screenshot: includeScreenshot,
       include_accessibility_tree: includeTree, max_depth: Number(args.max_tree_depth) || 20,
-      max_elements: Number(args.max_tree_nodes) || 400, max_dimension: MAX_IMAGE_DIMENSION };
+      max_elements: Number(args.max_tree_nodes) || 400, max_dimension: MAX_IMAGE_DIMENSION,
+      // The driver defaults to `tree_format: "markdown"`, which returns only
+      // the `tree_markdown` string. `freshTree` and `explicitSnapshotTrusted`
+      // both require `structured.elements` to be an array, so with the
+      // default format every read is judged untrusted: `tree_version` never
+      // advances, `tree_actionable` stays false, and every element_index
+      // action is refused with `stale_tree`. Ask for the structured array.
+      tree_format: "elements" };
     let result;
     let treeError = null;
     const captureContext = context || { active: true, deadline: Date.now() + RPC_TIMEOUT_MS + 10000 };
