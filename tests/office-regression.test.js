@@ -357,17 +357,41 @@ test("query cannot resolve duplicate indices by hiding one duplicate", async () 
   assert.throws(() => f.runtime._elementFields("WINWORD", 7), /ambiguous/);
 });
 
-test("cached query cannot widen its last authorization or revive stale tokens", async () => {
-  const f = fixture({ capture: n => state([filename, { ...filename, element_index: 22, element_token: "s000001:22", label: "Other" }]) });
-  await f.snapshot({ query: "文件名", refresh: true });
-  const hidden = await f.snapshot({ query: "Other" });
-  assert.equal(hidden.structuredContent.query_local, true);
-  assert.equal(hidden.structuredContent.elements.length, 0);
+test("successive queries search the original snapshot and authorize only the latest matches", async () => {
+  const other = { ...filename, element_index: 22, element_token: "s000001:22", label: "Other" };
+  const f = fixture({ capture: n => state(n === 1 ? [filename, other] : [filename], { window_bounds: { x: 80, y: 65 } }) });
+  const first = await f.snapshot({ query: "文件名" });
+  assert.equal(first.structuredContent.query_local, false);
   assert.throws(() => f.runtime._elementFields("WINWORD", 22), { code: "stale_tree" });
-  await f.call("click", { x: 1, y: 1 });
-  const refreshed = await f.snapshot({ query: "文件名" });
-  assert.equal(refreshed.structuredContent.query_local, false);
+  assert.equal((await f.snapshot({ query: "missing" })).structuredContent.elements.length, 0);
+  assert.throws(() => f.runtime._elementFields("WINWORD", 7), { code: "stale_tree" });
+  const next = (await f.snapshot({ query: "Other" })).structuredContent;
+  assert.equal(next.query_local, true);
+  assert.equal(next.tree_version, first.structuredContent.tree_version);
+  assert.deepEqual(Array.from(next.elements, el => el.element_index), [22]);
+  assert.equal(next.elements[0].frame.x, other.frame.x);
+  assert.equal(f.cached().elements[0].frame.x, other.frame.x - 80);
+  assert.throws(() => f.runtime._elementFields("WINWORD", 7), { code: "stale_tree" });
+  assert.equal(f.runtime._elementFields("WINWORD", 22).element_token, other.element_token);
+  assert.equal(f.calls.cua.filter(call => call.name === "get_window_state").length, 1);
+  await f.call("set_value", { element_index: 22, value: "ok" });
+  const refreshed = (await f.snapshot({ query: "Other" })).structuredContent;
+  assert.equal(refreshed.query_local, false);
+  assert.equal(refreshed.elements.length, 0);
   assert.equal(f.calls.cua.filter(call => call.name === "get_window_state").length, 2);
+});
+
+test("querying another window captures that window before filtering", async () => {
+  const f = fixture({
+    capture: (_, { window_id }) => state(window_id === 100 ? [filename] : [], { window_id }),
+    listWindows: () => ({ structuredContent: { windows: [{ app_name: "WINWORD", pid: 42, window_id: 200 }] } }),
+  });
+  await f.snapshot({ query: "文件名", window_id: 100 });
+  const next = (await f.snapshot({ query: "文件名", window_id: 200 })).structuredContent;
+  assert.equal(next.query_local, false);
+  assert.equal(next.window_id, 200);
+  assert.equal(next.elements.length, 0);
+  assert.throws(() => f.runtime._elementFields("WINWORD", 7), { code: "stale_tree" });
 });
 
 for (const extra of [{ pid: 99 }, { cached: true }, { tree_error: "failed" }]) {

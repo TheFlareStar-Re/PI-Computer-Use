@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "cn.star.computer-use",
   "name": "Computer Use",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Windows desktop automation with Office knowledge and application workflows.",
   "author": "TheFlareStar",
   "license": "MPL-2.0",
@@ -194,7 +194,7 @@
       },
       {
         "name": "drag",
-        "description": "Drag between screenshot coordinates in an app window.",
+        "description": "Drag between two points from the latest screenshot of the target window. Capture again after switching or moving windows.",
         "risk": "high",
         "schema": {
           "type": "object",

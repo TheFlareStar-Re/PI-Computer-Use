@@ -28,10 +28,13 @@ function renderProbe(state) {
     line.textContent = probe.version
       ? `已安装 cua-driver ${probe.version} · ${probe.path || probe.mcpCommand || ""}`
       : `已安装 cua-driver · ${probe.path || ""}`;
-    hint.hidden = true;
-    installBtn.hidden = true;
+    hint.hidden = !probe.updateAvailable && !probe.error;
+    hint.textContent = probe.error || `已验证版本为 ${probe.targetVersion}。升级会停止当前会话，完成后可点击启动。`;
+    installBtn.textContent = `${probe.error ? "修复" : "升级至"} ${probe.targetVersion}`;
+    installBtn.hidden = !probe.updateAvailable && !probe.error;
   } else {
     line.textContent = "未检测到 cua-driver";
+    installBtn.textContent = `安装 ${probe.targetVersion}`;
     hint.hidden = false;
     hint.textContent = `将运行官方安装脚本（从 ${install.sourceUrl || "https://cua.ai/driver/install.ps1"} 下载）。命令：${install.display || ""}`;
     installBtn.hidden = false;

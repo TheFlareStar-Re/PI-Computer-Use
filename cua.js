@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { resolvePowerShell } = require("./powershell");
 
-const INSTALL_SCRIPT_URL = "https://cua.ai/driver/install.ps1";
+const { version: TARGET_VERSION, source: INSTALL_SCRIPT_URL } = require("./vendor.json");
 const PROBE_TIMEOUT_MS = 15_000;
 const INSTALL_TIMEOUT_MS = 180_000;
 const BINARY = process.platform === "win32" ? "cua-driver.exe" : "cua-driver";
@@ -63,7 +63,18 @@ function runCapture(exe, args, timeoutMs) {
   };
 }
 
-function probe() {
+function needsUpgrade(version) {
+  const parts = /^(\d+)\.(\d+)\.(\d+)([-+].*)?$/.exec(version || "");
+  if (!parts) return false;
+  const target = TARGET_VERSION.split(".").map(Number);
+  for (let i = 0; i < target.length; i++) {
+    const actual = Number(parts[i + 1]);
+    if (actual !== target[i]) return actual < target[i];
+  }
+  return Boolean(parts[4]?.startsWith("-"));
+}
+
+function probeBinary() {
   const found = findBinary();
   if (!found) {
     return {
@@ -86,6 +97,7 @@ function probe() {
     try {
       const manifest = JSON.parse(ran.stdout);
       version = manifest.binary_version || null;
+      if (!version) error = "manifest is missing binary_version";
       const invocation = manifest.mcp_invocation || {};
       if (invocation.command) mcpCommand = invocation.command;
       if (Array.isArray(invocation.args) && invocation.args.length) mcpArgs = invocation.args;
@@ -103,12 +115,22 @@ function probe() {
   };
 }
 
+let lastProbe;
+function probe({ refresh = false } = {}) {
+  if (!refresh && lastProbe && Date.now() - lastProbe.at < 5_000) return lastProbe.info;
+  const info = probeBinary();
+  info.targetVersion = TARGET_VERSION;
+  info.updateAvailable = needsUpgrade(info.version);
+  lastProbe = { at: Date.now(), info };
+  return info;
+}
+
 function displayExecutable(exe) {
   return `& '${String(exe).replace(/'/g, "''")}'`;
 }
 
 function installPreview(options = {}) {
-  const inner = `irm ${INSTALL_SCRIPT_URL} | iex`;
+  const inner = `$env:CUA_DRIVER_RS_VERSION = '${TARGET_VERSION}'; $env:CUA_DRIVER_NO_CONNECT = '1'; $env:CUA_DRIVER_NO_TEST = '1'; irm ${INSTALL_SCRIPT_URL} | iex`;
   const env = options.env || process.env;
   const program = resolvePowerShell({
     env,
@@ -118,7 +140,7 @@ function installPreview(options = {}) {
   return {
     program,
     args: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", inner],
-    display: `${displayExecutable(program)} -NoProfile -Command "${inner}"`,
+    display: `${displayExecutable(program)} -NoProfile -Command '${inner.replace(/'/g, "''")}'`,
     sourceUrl: INSTALL_SCRIPT_URL,
   };
 }
@@ -153,7 +175,7 @@ function runInstall(options = {}) {
     });
     child.on("exit", (code) => {
       clearTimeout(timer);
-      if (code === 0) resolve({ ok: true, text: out.trim(), probe: probe() });
+      if (code === 0) resolve({ ok: true, text: out.trim(), probe: probe({ refresh: true }) });
       else reject(new Error(out.trim() || `installer exited ${code}`));
     });
   });
@@ -172,6 +194,7 @@ function doctor(exe) {
 module.exports = {
   INSTALL_SCRIPT_URL,
   findBinary,
+  needsUpgrade,
   probe,
   installPreview,
   runInstall,

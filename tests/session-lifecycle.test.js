@@ -125,7 +125,10 @@ test("a second session_ended refusal is not retried again", async () => {
   const refused = { isError: true, structuredContent: { status: "refused", refusal: { code: "session_ended" } } };
   delete f.runtime._cua;
   const requests = [];
-  f.runtime._rpcUnlocked = async (method, params) => { requests.push(params.name); return refused; };
+  f.runtime._rpcUnlocked = async (method, params) => {
+    requests.push(params.name);
+    return params.name === "start_session" ? { structuredContent: { ok: true } } : refused;
+  };
   f.runtime._invalidateTrees = () => {};
   const result = await f.runtime._cua("get_window_state", {});
   assert.deepEqual(requests, ["get_window_state", "start_session", "get_window_state"]);

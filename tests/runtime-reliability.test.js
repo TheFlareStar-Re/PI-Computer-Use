@@ -253,6 +253,13 @@ for (const [predicate, elements] of [
   });
 }
 
+test("wait cannot confirm text found in another window", async () => {
+  const f = fixture({ capture: () => state([button], { window_id: 200 }) });
+  const result = await f.wait({ kind: "text_present", text: "Save" });
+  assert.notEqual(result.structuredContent.wait.status, "matched");
+  assert.notEqual(result.structuredContent.action_result?.goal, "confirmed");
+});
+
 test("wait polls full fresh trees, bypasses query cache, and returns matching final screenshot", async () => {
   const f = fixture({ capture: (n, p) => state([{ label: n < 3 ? "loading" : "Done" }], {}, p.include_screenshot) });
   await f.snapshot();

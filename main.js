@@ -106,10 +106,15 @@ async function onPanelInvoke(channel, payload) {
     return { ...(await panelState()), doctor };
   }
   if (channel === "cu.probe") {
-    return { ...(await panelState()), probe: probe() };
+    probe({ refresh: true });
+    return panelState();
   }
   if (channel === "cu.install") {
+    runtime.stop("driver installation");
     const installed = await runInstall();
+    if (installed.probe.error || installed.probe.version !== installed.probe.targetVersion) {
+      throw new Error(installed.probe.error || `安装器已退出，但当前检测到的驱动仍为 ${installed.probe.version || "未知版本"}。请检查 PATH 和驱动路径。`);
+    }
     return { ...(await panelState()), doctor: { text: installed.text }, probe: installed.probe };
   }
   if (channel === "cu.setAllowlist") {

@@ -1,6 +1,6 @@
 {
   "name": "cua-driver",
-  "version": "0.28.2",
+  "version": "0.53.0",
   "license": "MIT",
   "source": "https://cua.ai/driver/install.ps1",
   "repository": "https://github.com/trycua/cua",
