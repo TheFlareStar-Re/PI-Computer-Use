@@ -7,6 +7,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { EventEmitter } = require("node:events");
 const sourcePath = path.join(__dirname, "..", "runtime.js");
+const runtimeRequire = require("node:module").createRequire(sourcePath);
 
 function fixture() {
   const children = [];
@@ -31,7 +32,7 @@ function fixture() {
       if (name === "./overlay") return { ControlBanner: class {} };
       if (name === "./cua") return {};
       if (name === "./policy") return require("../policy");
-      return require(name);
+      return runtimeRequire(name);
     },
   };
   vm.runInNewContext(fs.readFileSync(sourcePath, "utf8"), sandbox, { filename: sourcePath });

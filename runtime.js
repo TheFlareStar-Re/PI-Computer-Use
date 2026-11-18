@@ -8,9 +8,9 @@ const { probe: probeCua, doctor: cuaDoctor, installPreview } = require("./cua");
 const { filterRecords, gateRecord, namesMatch, normalize } = require("./policy");
 const { resolvePowerShell } = require("./powershell");
 
-const { version: PLUGIN_VERSION } = require(path.join(__dirname, "manifest.json"));
+const { version: PLUGIN_VERSION } = require("./manifest.json");
 const { usesTokenContract, driverRequest, driverResponse, validWindow, sameWindow, windowBounds,
-  sameWindowBounds, screenshotFrame, pointsInsideFrame } = require(path.join(__dirname, "driver-compat.js"));
+  sameWindowBounds, screenshotFrame, pointsInsideFrame } = require("./driver-compat.js");
 const START_TIMEOUT_MS = 15_000;
 const RPC_TIMEOUT_MS = 90_000;
 const FOCUS_TIMEOUT_MS = 8_000;

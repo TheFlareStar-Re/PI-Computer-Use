@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const runtimePath = path.join(__dirname, "..", "runtime.js");
+const runtimeRequire = require("node:module").createRequire(runtimePath);
 const source = fs.readFileSync(runtimePath, "utf8");
 const button = { element_index: 1, element_token: "same-driver-id:1", enabled: true, visible: true, role: "Button", label: "Save", frame: { x: 0, y: 0, w: 100, h: 100 } };
 const image = { type: "image", mimeType: "image/png", data: "YWJj" };
@@ -36,7 +37,7 @@ function fixture({ platform = "win32", actionResult, capture, native, clipboardF
       if (name === "./cua") return {};
       if (name === "./policy") return require("../policy");
       if (name === "electron") return { clipboard: { writeText() { calls.clipboard++; if (clipboardFails) throw new Error("clipboard unavailable"); } } };
-      return require(name);
+      return runtimeRequire(name);
     },
   };
   vm.runInNewContext(source, sandbox, { filename: runtimePath });

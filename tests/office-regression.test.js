@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const runtimePath = path.join(__dirname, "..", "runtime.js");
+const runtimeRequire = require("node:module").createRequire(runtimePath);
 const source = fs.readFileSync(runtimePath, "utf8");
 const image = { type: "image", mimeType: "image/png", data: "YWJj" };
 const filename = { element_index: 7, element_token: "s000001:7", role: "Edit", label: "文件名",
@@ -35,7 +36,7 @@ function fixture({ app = "WINWORD", capture = () => state(), actionResult, onCua
       if (name === "./overlay") return { ControlBanner: class {} };
       if (name === "./cua") return {};
       if (name === "./policy") return require("../policy");
-      return require(name);
+      return runtimeRequire(name);
     },
   };
   vm.runInNewContext(source, sandbox, { filename: runtimePath });
